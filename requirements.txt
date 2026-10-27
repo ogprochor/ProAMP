@@ -1,0 +1,6 @@
+textual>=0.80
+python-vlc>=3.0.20
+mutagen>=1.47
+numpy>=1.26
+SoundCard>=0.4.3
+pytest>=8.0
