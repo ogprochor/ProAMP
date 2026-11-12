@@ -5,11 +5,8 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import Button, DataTable, Footer, Header, Input, Static
 
-from audio.base import AudioBackendError
-from audio.loopback import LoopbackSpectrum
-from audio.vlc_backend import VlcBackend
-from model.library import Library
-from model.playlist import Playlist, RepeatMode
+from controller.app_controller import AppController, PlayerSnapshot
+from model.playlist import RepeatMode
 from view.tui.visualizer import Visualizer
 
 
@@ -70,11 +67,8 @@ class ProampApp(App):
 
     def __init__(self):
         super().__init__()
-        self.library = Library()
-        self.playlist = Playlist()
-        self.backend = None
-        self.capture = None
-        self._last_track = None
+        self.controller = AppController()
+        self._displayed_track = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -105,13 +99,9 @@ class ProampApp(App):
         table = self.query_one(DataTable)
         table.add_columns("#", "Tytuł", "Wykonawca", "Album", "Czas")
         table.cursor_type = "row"
-        try:
-            self.backend = VlcBackend()
-        except AudioBackendError as exc:
-            self.notify(f"Odtwarzanie niedostępne: {exc}", severity="error")
-
-        self.capture = LoopbackSpectrum(self._receive_levels)
-        self.capture.start()
+        if self.controller.backend_error:
+            self.notify(f"Odtwarzanie niedostępne: {self.controller.backend_error}", severity="error")
+        self.controller.start_spectrum(self._receive_levels)
         self.set_interval(0.2, self._refresh_status)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -134,69 +124,41 @@ class ProampApp(App):
 
     def _scan_folder(self) -> None:
         raw = self.query_one("#music-folder", Input).value.strip().strip('"')
-        folder = Path(raw).expanduser()
-        if not folder.is_dir():
-            self.notify(f"Nie znaleziono folderu: {folder}", severity="error")
+        try:
+            tracks = self.controller.scan_folder(Path(raw))
+        except ValueError as error:
+            self.notify(str(error), severity="error")
             return
-        # nowe skanowanie zastępuje zawartosc biblioteki i kolejki
-        if self.backend:
-            self.backend.stop()
-        self._last_track = None
-        self.library.clear()
-        self.library.add_folder(folder)
-        self.playlist.clear()
-        self.playlist.add_many(self.library.tracks)
         table = self.query_one(DataTable)
         table.clear()
-        for index, track in enumerate(self.playlist.tracks):
+        for index, track in enumerate(tracks):
             table.add_row(
                 str(index + 1), track.title, track.artist, track.album,
                 self._format_time(track.duration), key=str(index),
             )
         self.query_one("#now-playing", Static).update(
-            f"Załadowano {len(self.library)} utworów · wybierz utwór z playlisty"
+            f"Załadowano {len(tracks)} utworów · wybierz utwór z playlisty"
         )
+        self._displayed_track = None
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if event.data_table.id == "tracks" and self.playlist.tracks:
+        if event.data_table.id == "tracks" and self.controller.playlist.tracks:
             self._play_index(event.cursor_row)
 
     def action_toggle_play(self) -> None:
-        if not self.backend:
-            return
-        if self.backend.is_playing():
-            self.backend.pause()
-        elif self.playlist.current:
-            if self._last_track != self.playlist.current:
-                self._load_current()
-            self.backend.play()
+        self.controller.toggle_play()
 
     def action_next_track(self) -> None:
-        if self.playlist.next() is not None:
-            self._load_current()
-            if self.backend:
-                self.backend.play()
+        self.controller.next_track()
 
     def action_previous_track(self) -> None:
-        if self.playlist.previous() is not None:
-            self._load_current()
-            if self.backend:
-                self.backend.play()
+        self.controller.previous_track()
 
     def action_seek_backward(self) -> None:
-        self._seek(-10)
+        self.controller.seek(-10)
 
     def action_seek_forward(self) -> None:
-        self._seek(10)
-
-    def _seek(self, offset: float) -> None:
-        if not self.backend:
-            return
-        position = max(0, self.backend.get_position() + offset)
-        duration = self.backend.get_duration()
-        if duration > 0:
-            position = min(position, duration)
-        self.backend.seek(position)
+        self.controller.seek(10)
 
     def action_volume_up(self) -> None:
         self._change_volume(5)
@@ -205,33 +167,21 @@ class ProampApp(App):
         self._change_volume(-5)
 
     def _change_volume(self, amount: int) -> None:
-        if not self.backend:
-            return
-        self.backend.set_volume(self.backend.get_volume() + amount)
+        self.controller.change_volume(amount)
 
     def action_shuffle(self) -> None:
-        self.playlist.toggle_shuffle()
+        self.controller.toggle_shuffle()
 
     def action_repeat(self) -> None:
-        self.playlist.cycle_repeat()
+        self.controller.cycle_repeat()
 
     def _play_index(self, index: int) -> None:
         try:
-            self.playlist.select(index)
+            track = self.controller.select_track(index)
         except IndexError:
             return
-        self._load_current()
-        if self.backend:
-            self.backend.play()
-
-    def _load_current(self) -> None:
-        track = self.playlist.current
-        if not track:
-            return
-        self._last_track = track
-        if self.backend:
-            self.backend.load(track.path)
-        self.query_one("#now-playing", Static).update(f"♫  {track.artist} — {track.title}")
+        self.query_one("#now-playing", Static).update(f"Teraz gra:  {track.artist} — {track.title}")
+        self._displayed_track = track
 
     def _receive_levels(self, levels: tuple[float, ...]) -> None:
         try:
@@ -243,50 +193,47 @@ class ProampApp(App):
         self.query_one(Visualizer).set_levels(levels)
 
     def _refresh_status(self) -> None:
-        self._refresh_player_info()
-        if self.capture and self.capture.error:
-            self.notify(f"Wizualizer niedostępny: {self.capture.error}", severity="error")
-            self.capture.error = None
-        if self.backend and self.backend.is_finished():
-            next_track = self.playlist.next(auto=True)
-            if next_track is not None:
-                self._load_current()
-                self.backend.play()
-            elif self._last_track:
-                self.backend.stop()
-                self._last_track = None
+        state = self.controller.tick()
+        self._render_current_track(state)
+        self._refresh_player_info(state)
+        if self.controller.capture and self.controller.capture.error:
+            self.notify(f"Wizualizer niedostępny: {self.controller.capture.error}", severity="error")
+            self.controller.capture.error = None
 
-    def _refresh_player_info(self) -> None:
-        if not self.backend:
+    def _render_current_track(self, state: PlayerSnapshot) -> None:
+        if state.current == self._displayed_track:
+            return
+        if state.current:
+            label = f"♫  {state.current.artist} — {state.current.title}"
+        else:
+            label = "Nie odtwarzam utworu"
+        self.query_one("#now-playing", Static).update(label)
+        self._displayed_track = state.current
+
+    def _refresh_player_info(self, state: PlayerSnapshot) -> None:
+        if not self.controller.backend:
             info = "Odtwarzacz niedostępny"
         else:
-            position = self.backend.get_position()
-            duration = self.backend.get_duration()
-            if self.backend.is_playing():
-                state = "odtwarzanie"
-            elif self._last_track:
-                state = "pauza"
+            if state.is_playing:
+                playback_state = "odtwarzanie"
             else:
-                state = "zatrzymano"
+                playback_state = "pauza / stop"
             repeat = {
                 RepeatMode.OFF: "wył.",
                 RepeatMode.ALL: "playlista",
                 RepeatMode.ONE: "utwór",
-            }[self.playlist.repeat]
+            }[self.controller.playlist.repeat]
             info = (
-                f"Czas: {self._format_time(position)} / {self._format_time(duration)}\n"
-                f"Głośność: {self.backend.get_volume()}%\n"
-                f"Stan: {state}\n"
-                f"Shuffle: {'wł.' if self.playlist.shuffle else 'wył.'}\n"
+                f"Czas: {self._format_time(state.position)} / {self._format_time(state.duration)}\n"
+                f"Głośność: {state.volume}%\n"
+                f"Stan: {playback_state}\n"
+                f"Shuffle: {'wł.' if state.shuffle else 'wył.'}\n"
                 f"Repeat: {repeat}"
             )
         self.query_one("#player-info", Static).update(info)
 
     def on_unmount(self) -> None:
-        if self.capture:
-            self.capture.stop()
-        if self.backend:
-            self.backend.release()
+        self.controller.close()
 
     @staticmethod
     def _format_time(seconds: float) -> str:
