@@ -32,6 +32,7 @@ class AppController:
                 self.backend = VlcBackend()
             except AudioBackendError as error:
                 self.backend_error = str(error)
+        self.set_volume(50)
         self.capture: LoopbackSpectrum | None = None
         self._last_track: Track | None = None
 
@@ -94,6 +95,10 @@ class AppController:
         if self.backend:
             self.backend.set_volume(self.backend.get_volume() + amount)
 
+    def set_volume(self, value: int) -> None:
+        if self.backend:
+            self.backend.set_volume(max(0, min(100, int(value))))
+
     def toggle_shuffle(self) -> None:
         self.playlist.toggle_shuffle()
 
@@ -117,7 +122,7 @@ class AppController:
             current=self.playlist.current,
             position=backend.get_position() if backend else 0.0,
             duration=backend.get_duration() if backend else 0.0,
-            volume=backend.get_volume() if backend else 100,
+            volume=backend.get_volume() if backend else 50,
             is_playing=backend.is_playing() if backend else False,
             shuffle=self.playlist.shuffle,
             repeat=self.playlist.repeat,

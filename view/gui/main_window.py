@@ -28,14 +28,16 @@ from model.playlist import RepeatMode
 
 
 THEMES = {
-    "Monochrome": {"background": "#101010", "surface": "#1b1b1b", "surface_alt": "#252525", "border": "#444444", "text": "#f2f2f2", "muted": "#aaaaaa", "accent": "#eeeeee", "accent_hover": "#ffffff", "accent_text": "#111111", "selection": "#505050", "bar_start": "#f5f5f5", "bar_end": "#777777"},
+    "Monochrome": {"background": "#101010", "surface": "#1b1b1b", "surface_alt": "#252525", "border": "#444444", "text": "#fefefe", "muted": "#aaaaaa", "accent": "#eeeeee", "accent_hover": "#ffffff", "accent_text": "#111111", "selection": "#505050", "bar_start": "#f5f5f5", "bar_end": "#777777"},
     "Neo": {"background": "#020804", "surface": "#07120b", "surface_alt": "#0d1d12", "border": "#1d6130", "text": "#d8ffe0", "muted": "#7caf87", "accent": "#00e83b", "accent_hover": "#20ff59", "accent_text": "#001505", "selection": "#145028", "bar_start": "#a6ff00", "bar_end": "#00ef51"},
     "Light": {"background": "#e9e5dd", "surface": "#f5f2ec", "surface_alt": "#e4dfd5", "border": "#c7c0b3", "text": "#292823", "muted": "#777165", "accent": "#8a7e69", "accent_hover": "#a0937c", "accent_text": "#ffffff", "selection": "#d3c5a8", "bar_start": "#9e8d6e", "bar_end": "#c4b89f"},
-    "Helldiver": {"background": "#100806", "surface": "#21100b", "surface_alt": "#35170d", "border": "#713217", "text": "#ffe8ce", "muted": "#c69365", "accent": "#f04a1b", "accent_hover": "#ff6530", "accent_text": "#240800", "selection": "#762d13", "bar_start": "#ffcc27", "bar_end": "#f13a1a"},
+    "Helldiver": {"background": "#030100", "surface": "#21100b", "surface_alt": "#35170d", "border": "#713217", "text": "#ffe8ce", "muted": "#c69365", "accent": "#f0941b", "accent_hover": "#ffb759", "accent_text": "#080501", "selection": "#762d13", "bar_start": "#ffcc27", "bar_end": "#b50202"},
     "Sh0ck": {"background": "#100020", "surface": "#22003b", "surface_alt": "#330052", "border": "#9c00a3", "text": "#fff0ff", "muted": "#d5a5e8", "accent": "#ff00c8", "accent_hover": "#ff42dd", "accent_text": "#220018", "selection": "#610078", "bar_start": "#00f6ff", "bar_end": "#ff00d4"},
     "Eco": {"background": "#edf1e9", "surface": "#ffffff", "surface_alt": "#e3eadd", "border": "#c2d1bd", "text": "#203024", "muted": "#66776a", "accent": "#4d9b50", "accent_hover": "#67b46a", "accent_text": "#ffffff", "selection": "#c7dfc2", "bar_start": "#a8ce54", "bar_end": "#469d54"},
-    "classic": {"background": "#151718", "surface": "#222629", "surface_alt": "#2b3034", "border": "#41494d", "text": "#d9dedb", "muted": "#9ca6a2", "accent": "#ed8b24", "accent_hover": "#ffa43a", "accent_text": "#211408", "selection": "#51402b", "bar_start": "#7cf04a", "bar_end": "#ed8b24"},
+    "Classic": {"background": "#151718", "surface": "#222629", "surface_alt": "#2b3034", "border": "#41494d", "text": "#d9dedb", "muted": "#9ca6a2", "accent": "#ed8b24", "accent_hover": "#ffa43a", "accent_text": "#211408", "selection": "#51402b", "bar_start": "#7cf04a", "bar_end": "#ed8b24"},
     "Classic26": {"background": "#11151c", "surface": "#1a202a", "surface_alt": "#202833", "border": "#293442", "text": "#e7edf5", "muted": "#aeb9c8", "accent": "#61d6c5", "accent_hover": "#7beada", "accent_text": "#071717", "selection": "#174d55", "bar_start": "#61d6c5", "bar_end": "#8a6cff"},
+    "Mtrx": {"background": "#060808", "surface": "#041421", "surface_alt": "#182c30", "border": "#40707c", "text": "#fefefe", "muted": "#8ca8a6", "accent": "#daebe9", "accent_hover": "#ffffff", "accent_text": "#000407", "selection": "#396e79", "bar_start": "#29f2c6", "bar_end": "#0b9c7e"},
+
 }
 
 
@@ -312,8 +314,8 @@ class MainWindow(QMainWindow):
         self.volume_label.setObjectName("volumeLabel")
         self.volume_slider = ClickSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(100)
-        self.volume_value = QLabel("100%")
+        self.volume_slider.setValue(50)
+        self.volume_value = QLabel("50%")
         self.volume_value.setObjectName("volumeValue")
         self.volume_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.volume_value.setMinimumWidth(40)
@@ -431,8 +433,7 @@ class MainWindow(QMainWindow):
         self.controller.seek(target - snapshot.position)
 
     def _set_volume(self, volume: int) -> None:
-        snapshot = self.controller.snapshot()
-        self.controller.change_volume(volume - snapshot.volume)
+        self.controller.set_volume(volume)
 
     def _refresh(self) -> None:
         snapshot = self.controller.tick()

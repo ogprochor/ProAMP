@@ -204,7 +204,7 @@ class ProampApp(App):
         if state.current == self._displayed_track:
             return
         if state.current:
-            label = f"♫  {state.current.artist} — {state.current.title}"
+            label = f"Teraz gra: {state.current.artist} — {state.current.title}"
         else:
             label = "Nie odtwarzam utworu"
         self.query_one("#now-playing", Static).update(label)
